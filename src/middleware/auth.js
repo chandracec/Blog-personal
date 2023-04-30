@@ -1,89 +1,150 @@
 const jwt = require("jsonwebtoken");
 const authorModel = require("../model/authorModel");
-const blogModel = require("../model/blogModel");
+const { isValidObjectId } = require("mongoose");
 
-//==============================AUTHENTICATION============================================
+const SECRETE_KEY = "cvfyguhijokp567890";
 
-const authentication = async function (req, res, next) {
-  const authorHeader = req.headers["x-api-key"];
+const authorizationFuc = (req, res, next) => {
   try {
-    if (!authorHeader) {
-      res.status(400).send({ status: false, msg: "Token is not present" });
-    } else {
-      const decodedToken = await jwt.verify(
-        authorHeader,
-        "signature of group-5",
-        function (err, decodedToken) {
-          if (err)
-            res
-              .status(401)
-              .send({ status: false, msg: "authentication failed" });
-
-          next();
-        }
-      );
-    }
-  } catch (err) {
-    res.status(500).send({ status: false, msg: err });
-  }
-};
-
-//===========================================AUTHORISATION=======================================
-
-const authorisation = async function (req, res, next) {
-  try {
-    const headerToken = req.headers["x-api-key"];
-    const blog_id = req.params.blogId;
-    if (!blog_id) return res.status(400).send("blog id is required");
-
-    const decodedToken = await jwt.verify(headerToken, "signature of group-5");
-    const author_id = decodedToken.userId;
-
-    const blog = await blogModel.findById(blog_id);
-
-    if (!blog)
-      res.status(404).send({ status: false, msg: "No blogs with this id" });
-
-    if (blog.authorId == author_id) {
-      next();
-    } else {
-      res
+    const token = req.headers[`x-api-key`];
+    if (!token)
+      return res
+        .status(401)
+        .send({ status: false, message: "Provide credentials headers token" });
+    const decodedToken = jwt.verify(token, SECRETE_KEY);
+    req.authorId = decodedToken.authorId;
+    next();
+  } catch (error) {
+    if (
+      err.message.includes("signature") ||
+      err.message.includes("token") ||
+      err.message.includes("malformed")
+    ) {
+      return res
         .status(403)
-        .send({
-          status: false,
-          msg: "Not authorized to perform this operation",
-        });
+        .send({ status: false, message: "You are not Authenticated" });
     }
-  } catch (err) {
-    res.status(500).send({ status: false, msg: err });
+    res.status(400).send({ status: false, message: error.message });
   }
 };
 
-const authQuery = async function (req, res, next) {
-  try {
-    const data = req.query;
-    if (Object.keys(data).length === 0) {
-      return res.status(400).send({ msg: "No query found to delete the blog" });
+const authorExists = async (authorId) => {
+  const author = await authorModel.findById(authorId);
+  if (!author) return false;
+  return true;
+};
+
+const isValidValue = (value) => {
+  if (typeof value === "undefined" || value === null) return false;
+  if (typeof value === "string" && value.trim().length === 0) return false;
+  return true;
+};
+
+const blogExist = async (blogId) => {
+  const blog = await blogModel.findById(blogId);
+  if (!blog) return false;
+  return true;
+};
+
+const filterQueryPATH = (query) => {
+  const arr = ["authorId", "category", "subcategory", "tags"];
+  if (query.length > 0) {
+    const drr = query.filter((x) => {
+      return arr.includes(x);
+    });
+    if (drr.length > 0) {
+      return true;
     }
-    const blogIdOfSearchedDoc = await blogModel
-      .find(data)
-      .select({ authorId: 1, _id: 0 });
-    if (blogIdOfSearchedDoc.length == 0)
+    return false;
+  }
+  return false;
+};
+
+const authorAuthorizationCheck = async (req, res, next) => {
+  try {
+    const id = req.authorId;
+    const blogId = req.params.blogId;
+    if (blogId) {
+      if (!isValidObjectId(blogId))
+        return res
+          .status(400)
+          .send({ status: false, message: "Provide valid blog id" });
+      const blog = await blogModel.findById(blogId);
+      if (!blog)
+        return res
+          .status(404)
+          .send({ status: false, message: "Provide not Found" });
+      const authorId = blog.authorId;
+      if (id !== authorId)
+        return res
+          .status(403)
+          .send({ status: false, message: "You are not Authorized" });
+    }
+    if (req.body.authorId) {
+      if (id && !isValidObjectId(id))
+        return res
+          .status(400)
+          .send({ status: false, message: "Provide valid author id" });
+      if (id != authorId) {
+        return res
+          .status(403)
+          .send({ status: false, message: "You are not authorized" });
+      }
+    }
+    next();
+  } catch (error) {}
+};
+// console.log(filterQuery(isDeleted))
+const authorCheckerForBlog = async (req, res, next) => {
+  try {
+    const id = req.body.authorId;
+    if (Object.keys(req.body).length == 0)
+      return res.status(400).send({ status: false, message: "Provide data" });
+    if (id && !isValidObjectId(id))
+      return res
+        .status(400)
+        .send({ status: false, message: "Provide valid author id" });
+    const author = await authorModel.findById(id);
+    if (!author)
       return res
         .status(404)
-        .send({ status: false, msg: "no Doc found For this query" });
-    const filter = blogIdOfSearchedDoc.filter((ele) => {
-      return ele.authorId == req.loggedUser;
-    });
-
-    if (filter.length == 0 && filter.length != blogIdOfSearchedDoc.length)
-      return res
-        .status(403)
-        .send({ status: false, msg: "not authorised to delete this doc" });
+        .send({
+          status: false,
+          message: "Provide ID not Found in author database",
+        });
     next();
-  } catch (err) {
-    res.status(500).send({ status: false, msg: err });
+  } catch (error) {
+    return res.status(500).send({ status: false, message: error.message });
   }
 };
 
-module.exports = { authorisation, authentication ,authQuery};
+const verifyIdOfDeled = (req, res, next) => {
+  try {
+    const authorId = req.query.authorI;
+    const blogId = req.params.blogId;
+
+    if (authorId && !ObjectId.isValid(authorId)) {
+      return res
+        .status(400)
+        .send({ status: false, message: "Please enter a valid id" });
+    }
+    if (blogId && !ObjectId.isValid(blogId)) {
+      return res
+        .status(404)
+        .send({ status: false, message: "Please enter a valid id" });
+    }
+    next();
+  } catch (error) {
+    return res.status(500).send({ status: false, message: error.message });
+  }
+};
+module.exports = {
+  authorExists,
+  authorizationFuc,
+  isValidValue,
+  blogExist,
+  filterQueryPATH,
+  authorAuthorizationCheck,
+  verifyIdOfDeled,
+  authorCheckerForBlog,
+};
