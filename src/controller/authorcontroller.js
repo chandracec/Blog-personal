@@ -1,62 +1,79 @@
 const authorModel = require("../model/authorModel");
 const validator = require("validator");
 const jwt = require("jsonwebtoken");
- 
-const arrTitle = ["Mr", "Mrs", "Miss"];
-const SECRETE_KEY = "cvfyguhijokp567890"
 
+const validTitles = ["Mr", "Mrs", "Miss"];
+const SECRET_KEY = "cvfyguhijokp567890";
 
+// Create a new author
 const createAuthor = async (req, res) => {
   try {
     const { fname, lname, email, password, title } = req.body;
-    if (!req.body)
-      return res
-        .status(400)
-        .send({
-          status: false,
-          message: "Please provide a body for create author",
-        });
-    if (!fname)
-      return res
-        .status(400)
-        .send({ status: false, message: "Please provide a First name " });
-    if (!lname)
-      return res
-        .status(400)
-        .send({ status: false, message: "Please provide a Last name " });
-    if (!password)
-      return res
-        .status(400)
-        .send({ status: false, message: "Please provide a Password" });
-    if (!email)
-      return res
-        .status(400)
-        .send({ status: false, message: "Please provide a Email Address" });
-    if (!title)
-      return res
-        .status(400)
-        .send({ status: false, message: "Please provide a title" });
-    if (!validator.isEmail(email))
-      return res
-        .status(400)
-        .send({ status: false, message: " Provide a valid email address" });
 
-    if (!arrTitle.includes(title))
-      return res
-        .status(400)
-        .send({
+    // Validate request body
+    if (!req.body) {
+      return res.status(400).send({
+        status: false,
+        message: "Please provide a body for creating an author",
+      });
+    }
+
+    // Validate required fields
+    if (!fname) {
+      return res.status(400).send({
+        status: false,
+        message: "Please provide a first name",
+      });
+    }
+    if (!lname) {
+      return res.status(400).send({
+        status: false,
+        message: "Please provide a last name",
+      });
+    }
+    if (!password) {
+      return res.status(400).send({
+        status: false,
+        message: "Please provide a password",
+      });
+    }
+    if (!email) {
+      return res.status(400).send({
+        status: false,
+        message: "Please provide an email address",
+      });
+    }
+    if (!title) {
+      return res.status(400).send({
+        status: false,
+        message: "Please provide a title",
+      });
+    }
+
+    // Validate email format
+    if (!validator.isEmail(email)) {
+      return res.status(400).send({
+        status: false,
+        message: "Please provide a valid email address",
+      });
+    }
+
+    // Validate title
+    if (!validTitles.includes(title)) {
+      return res.status(400).send({
+        status: false,
+        message: `Please provide a valid title from the following options: ${validTitles}`,
+      });
+    } else {
+      const foundAuthor = await authorModel.findOne({ email });
+      if (foundAuthor) {
+        return res.status(400).send({
           status: false,
-          message: `Provide a valid title that is titles ${arrTitle}`,
+          message: `The email address '${email}' already exists in the database`,
         });
-    else {
-      const findAuthor = await authorModel.findOne({ email: email });
-      if (findAuthor)
-        return res
-          .status(400)
-          .send({
-            status: false,
-            message: `this Email : ${email} already exist in the Database`,
-          });
+      }
+
+      // Create the author
       const author = await authorModel.create(req.body);
       res.status(201).send({ status: true, data: author });
     }
@@ -65,46 +82,51 @@ const createAuthor = async (req, res) => {
   }
 };
 
+// Author login
 const authorLogin = async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!req.body)
-      return res
-        .status(400)
-        .send({
-          status: false,
-          message: "Please provide a Email/Password for Login author",
-        });
-    if (!password)
-      return res
-        .status(400)
-        .send({ status: false, message: "Please provide a Password" });
-    if (!email)
-      return res
-        .status(400)
-        .send({ status: false, message: "Please provide a Email Address" });
-    if (!validator.isEmail(email))
-      return res
-        .status(400)
-        .send({
-          status: false,
-          message: "Please provide a Valid Email Address",
-        });
-    const findAuthor = await authorModel.findOne({
-      email: email,
-      password: password,
-    });
-    if (!findAuthor)
-      return res
-        .status(401)
-        .send({
-          status: false,
-          message: `${email} and ${password} does not exist`,
-        });
-    else {
-      const token = jwt.sign({ authorId: findAuthor._id }, SECRETE_KEY);
+
+    // Validate request body
+    if (!req.body) {
+      return res.status(400).send({
+        status: false,
+        message: "Please provide an email and password to log in as an author",
+      });
+    }
+    if (!password) {
+      return res.status(400).send({
+        status: false,
+        message: "Please provide a password",
+      });
+    }
+    if (!email) {
+      return res.status(400).send({
+        status: false,
+        message: "Please provide an email address",
+      });
+    }
+
+    // Validate email format
+    if (!validator.isEmail(email)) {
+      return res.status(400).send({
+        status: false,
+        message: "Please provide a valid email address",
+      });
+    }
+
+    // Find the author by email and password
+    const foundAuthor = await authorModel.findOne({ email, password });
+    if (!foundAuthor) {
+      return res.status(401).send({
+        status: false,
+        message: "Invalid email or password",
+      });
+    } else {
+      // Generate JWT token
+      const token = jwt.sign({ authorId: foundAuthor._id }, SECRET_KEY);
       res.setHeader("x-api-key", token);
-      return res.status(200).send({ status: true, data: { token: token } });
+      return res.status(200).send({ status: true, data: { token } });
     }
   } catch (error) {
     return res.status(500).send({ status: false, message: error.message });
